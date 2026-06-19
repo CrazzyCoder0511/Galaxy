@@ -1,1 +1,1 @@
-# Galaxy
+# github-galaxy
