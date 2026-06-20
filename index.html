@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GitHub Galaxy</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="sky" aria-label="Animated GitHub galaxy">
+        <canvas id="galaxyCanvas"></canvas>
+
+        <div class="topbar">
+          <div>
+            <p class="eyebrow">GitHub Galaxy</p>
+            <h1 id="galaxyTitle">Explore your code universe</h1>
+          </div>
+
+          <form id="profileForm" class="search-panel">
+            <label for="usernameInput">GitHub username</label>
+            <div class="search-row">
+              <input
+                id="usernameInput"
+                type="text"
+                autocomplete="off"
+                spellcheck="false"
+                placeholder="octocat"
+                aria-label="GitHub username"
+              />
+              <button type="submit">Launch</button>
+            </div>
+          </form>
+        </div>
+
+        <aside class="hud" aria-label="Galaxy stats">
+          <div>
+            <span>Repos</span>
+            <strong id="repoCount">0</strong>
+          </div>
+          <div>
+            <span>Stars</span>
+            <strong id="starCount">0</strong>
+          </div>
+          <div>
+            <span>Stars</span>
+            <strong id="activityCount">0</strong>
+          </div>
+        </aside>
+
+        <div class="controls" aria-label="Galaxy controls">
+          <button id="demoButton" type="button" title="Show demo galaxy">Demo</button>
+          <button id="pauseButton" type="button" title="Pause animation">Pause</button>
+          <button id="shuffleButton" type="button" title="Shuffle galaxy">Shuffle</button>
+        </div>
+
+        <div id="statusText" class="status">Enter a GitHub username to launch.</div>
+      </section>
+
+      <section class="dock" aria-label="Repository details">
+        <div class="dock-heading">
+          <div>
+            <p class="eyebrow">Selected Repository</p>
+            <h2 id="selectedName">Hover a planet</h2>
+          </div>
+          <a id="selectedLink" href="#" target="_blank" rel="noreferrer" aria-disabled="true">Open</a>
+        </div>
+        <p id="selectedDescription">
+          Repositories become planets. Your public contributions become stars around the galaxy.
+        </p>
+        <div id="repoList" class="repo-list" aria-label="Repository list"></div>
+      </section>
+    </main>
+
+    <script src="script.js"></script>
+  </body>
+</html>
