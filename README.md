@@ -1,5 +1,9 @@
 # GitHub Galaxy
-# v 1.1
+# v 1.1.2
+Bug Fixes 
+- Planet speed slowed to match reall patterns.
+- Planet movement limited to orbitall range
+
 GitHub Galaxy is a simple, visual website that turns a GitHub user's repositories into a starry galaxy. Each repository appears as a planet, and clicking a planet opens the repository page.
 
 ## Features
