@@ -2,6 +2,7 @@ const canvas = document.querySelector("#galaxyCanvas");
 const ctx = canvas.getContext("2d");
 
 const profileForm = document.querySelector("#profileForm");
+const usernameLabel = document.querySelector("#usernameLabel");
 const usernameInput = document.querySelector("#usernameInput");
 const galaxyTitle = document.querySelector("#galaxyTitle");
 const repoCount = document.querySelector("#repoCount");
@@ -13,6 +14,7 @@ const selectedDescription = document.querySelector("#selectedDescription");
 const selectedLink = document.querySelector("#selectedLink");
 const repoList = document.querySelector("#repoList");
 const demoButton = document.querySelector("#demoButton");
+const modeButton = document.querySelector("#modeButton");
 const pauseButton = document.querySelector("#pauseButton");
 const shuffleButton = document.querySelector("#shuffleButton");
 
@@ -24,12 +26,15 @@ let sparks = [];
 let starfield = [];
 let contributionStars = [];
 let currentEvents = [];
+let currentProfiles = [];
 let pointer = { x: -9999, y: -9999 };
 let selectedPlanet = null;
+let searchMode = "single";
 let paused = false;
 let lastFrame = performance.now();
 
 const palette = ["#7dd3fc", "#f9a8d4", "#fde68a", "#86efac", "#c4b5fd", "#fca5a5"];
+const orbitYScale = 0.58;
 
 const demoRepos = [
   {
@@ -70,6 +75,12 @@ const demoRepos = [
   },
 ];
 
+const demoProfile = {
+  user: { login: "demo" },
+  repos: demoRepos,
+  events: Array.from({ length: 28 }),
+};
+
 function resizeCanvas() {
   const rect = canvas.parentElement.getBoundingClientRect();
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -96,35 +107,86 @@ function buildStarfield() {
   }));
 }
 
-function makePlanets(repos) {
-  const visibleRepos = repos
-    .filter((repo) => !repo.fork)
-    .sort((a, b) => (b.stargazers_count || 0) - (a.stargazers_count || 0))
-    .slice(0, 12);
+function makePlanets(repos, owner = "demo") {
+  makeGalaxies([{ user: { login: owner }, repos, events: [] }]);
+}
 
-  planets = visibleRepos.map((repo, index) => ({
-    repo,
-    color: palette[index % palette.length],
-    angle: Math.random() * Math.PI * 2,
-    speed: 0.05 + Math.random() * 0.12,
-    orbit: 90,
-    radius: 14,
-    x: center.x,
-    y: center.y,
-  }));
+function makeGalaxies(profiles) {
+  currentProfiles = profiles;
+  planets = profiles.flatMap((profile, galaxyIndex) => {
+    const visibleRepos = profile.repos
+      .filter((repo) => !repo.fork)
+      .sort((a, b) => (b.stargazers_count || 0) - (a.stargazers_count || 0))
+      .slice(0, 12);
+
+    return visibleRepos.map((repo, repoIndex) => ({
+      repo,
+      owner: profile.user.login,
+      galaxyIndex,
+      galaxyTotal: profiles.length,
+      isMain: repoIndex === 0,
+      color: palette[(galaxyIndex + repoIndex) % palette.length],
+      angle: Math.random() * Math.PI * 2,
+      speed: 0.05 + Math.random() * 0.12,
+      orbit: 90,
+      radius: 14,
+      x: center.x,
+      y: center.y,
+      home: { x: center.x, y: center.y },
+    }));
+  });
 
   placePlanets();
   renderRepoList();
   selectPlanet(planets[0] || null);
 }
 
+function getGalaxyCenter(index, total) {
+  if (total <= 1) return center;
+
+  const compact = width < 720;
+  const radiusX = Math.min(width * (compact ? 0.28 : 0.3), compact ? 130 : 260);
+  const radiusY = Math.min(height * 0.24, compact ? 120 : 190);
+  const angle = total === 2 ? index * Math.PI : -Math.PI / 2 + (index * Math.PI * 2) / total;
+
+  return {
+    x: center.x + Math.cos(angle) * radiusX,
+    y: center.y + Math.sin(angle) * radiusY,
+  };
+}
+
 function placePlanets() {
-  const maxOrbit = Math.max(120, Math.min(width, height) * 0.38);
-  planets.forEach((planet, index) => {
-    planet.orbit = 70 + (maxOrbit * (index + 1)) / Math.max(planets.length, 1);
-    planet.radius = 12 + Math.sqrt((planet.repo.stargazers_count || 0) + 1) * 3;
-    planet.radius = Math.min(34, planet.radius);
+  const totalGalaxies = Math.max(1, currentProfiles.length || 1);
+  const clusterScale = totalGalaxies > 1 ? 0.24 : 0.38;
+  const maxOrbit = Math.max(68, Math.min(width, height) * clusterScale);
+  const groupedCounts = planets.reduce((counts, planet) => {
+    counts[planet.galaxyIndex] = (counts[planet.galaxyIndex] || 0) + (planet.isMain ? 0 : 1);
+    return counts;
+  }, {});
+  const seenOrbiters = {};
+
+  planets.forEach((planet) => {
+    planet.home = getGalaxyCenter(planet.galaxyIndex, totalGalaxies);
+    planet.radius = 12 + Math.sqrt((planet.repo.stargazers_count || 0) + 1) * (planet.isMain ? 4 : 3);
+    planet.radius = Math.min(planet.isMain ? 42 : 30, planet.radius);
+
+    if (planet.isMain) {
+      planet.x = planet.home.x;
+      planet.y = planet.home.y;
+      return;
+    }
+
+    const orbitIndex = seenOrbiters[planet.galaxyIndex] || 0;
+    const orbitCount = Math.max(groupedCounts[planet.galaxyIndex] || 1, 1);
+    seenOrbiters[planet.galaxyIndex] = orbitIndex + 1;
+    planet.orbit = 48 + (maxOrbit * (orbitIndex + 1)) / orbitCount;
+    updatePlanetPosition(planet);
   });
+}
+
+function updatePlanetPosition(planet) {
+  planet.x = planet.home.x + Math.cos(planet.angle) * planet.orbit;
+  planet.y = planet.home.y + Math.sin(planet.angle) * planet.orbit * orbitYScale;
 }
 
 function makeSparks(events) {
@@ -162,35 +224,71 @@ function makeContributionStars(events) {
   });
 }
 
-async function loadProfile(username) {
-  const cleanName = username.trim();
-  if (!cleanName) return;
+function parseUsernames(value) {
+  return value
+    .split(",")
+    .map((name) => name.trim())
+    .filter(Boolean)
+    .slice(0, 4);
+}
 
-  setStatus(`Launching ${cleanName}'s galaxy...`);
+async function fetchGithubProfile(username) {
+  const [userResponse, reposResponse, eventsResponse] = await Promise.all([
+    fetch(`https://api.github.com/users/${encodeURIComponent(username)}`),
+    fetch(`https://api.github.com/users/${encodeURIComponent(username)}/repos?sort=updated&per_page=100`),
+    fetch(`https://api.github.com/users/${encodeURIComponent(username)}/events/public?per_page=50`),
+  ]);
+
+  if (!userResponse.ok) throw new Error(`${username} was not found.`);
+  if (!reposResponse.ok) throw new Error(`GitHub did not return repository data for ${username}.`);
+
+  const user = await userResponse.json();
+  const repos = await reposResponse.json();
+  const events = eventsResponse.ok ? await eventsResponse.json() : [];
+  return { user, repos, events };
+}
+
+async function loadProfile(value) {
+  const usernames = parseUsernames(searchMode === "multi" ? value : value.split(",")[0] || "");
+  if (!usernames.length) return;
+
+  const label = searchMode === "multi" ? usernames.join(", ") : usernames[0];
+  setStatus(`Launching ${label}...`);
   profileForm.classList.add("is-loading");
 
   try {
-    const [userResponse, reposResponse, eventsResponse] = await Promise.all([
-      fetch(`https://api.github.com/users/${encodeURIComponent(cleanName)}`),
-      fetch(`https://api.github.com/users/${encodeURIComponent(cleanName)}/repos?sort=updated&per_page=100`),
-      fetch(`https://api.github.com/users/${encodeURIComponent(cleanName)}/events/public?per_page=50`),
-    ]);
+    const results = await Promise.allSettled(usernames.map(fetchGithubProfile));
+    const profiles = results.filter((result) => result.status === "fulfilled").map((result) => result.value);
+    const failed = results.filter((result) => result.status === "rejected").map((result) => result.reason.message);
 
-    if (!userResponse.ok) throw new Error("That GitHub profile was not found.");
-    if (!reposResponse.ok) throw new Error("GitHub did not return repository data.");
+    if (!profiles.length) throw new Error(failed[0] || "No GitHub profiles were found.");
 
-    const user = await userResponse.json();
-    const repos = await reposResponse.json();
-    const events = eventsResponse.ok ? await eventsResponse.json() : [];
+    const totalRepos = profiles.reduce((sum, profile) => sum + (profile.user.public_repos ?? profile.repos.length), 0);
+    const totalStars = profiles.reduce(
+      (sum, profile) => sum + profile.repos.reduce((repoSum, repo) => repoSum + (repo.stargazers_count || 0), 0),
+      0
+    );
+    const totalEvents = profiles.reduce((sum, profile) => sum + profile.events.length, 0);
+    const allEvents = profiles.flatMap((profile) =>
+      profile.events.map((event) => ({ ...event, owner: profile.user.login }))
+    );
 
-    galaxyTitle.textContent = `${user.login}'s code galaxy`;
-    repoCount.textContent = user.public_repos ?? repos.length;
-    starCount.textContent = repos.reduce((sum, repo) => sum + (repo.stargazers_count || 0), 0);
-    activityCount.textContent = events.length;
-    makePlanets(repos.length ? repos : demoRepos);
-    makeContributionStars(events);
-    makeSparks(events);
-    setStatus(`${repos.length} public repositories loaded.`);
+    galaxyTitle.textContent =
+      profiles.length > 1
+        ? `${profiles.map((profile) => profile.user.login).join(" vs ")}`
+        : `${profiles[0].user.login}'s code galaxy`;
+    repoCount.textContent = totalRepos;
+    starCount.textContent = totalStars;
+    activityCount.textContent = totalEvents;
+    makeGalaxies(profiles);
+    makeContributionStars(allEvents);
+    makeSparks(allEvents);
+
+    const loadedText =
+      profiles.length > 1
+        ? `${profiles.length} galaxies loaded for comparison.`
+        : `${profiles[0].repos.length} public repositories loaded.`;
+    setStatus(failed.length ? `${loadedText} ${failed.join(" ")}` : loadedText);
   } catch (error) {
     setStatus(error.message);
   } finally {
@@ -203,7 +301,7 @@ function loadDemo() {
   repoCount.textContent = demoRepos.length;
   starCount.textContent = demoRepos.reduce((sum, repo) => sum + repo.stargazers_count, 0);
   activityCount.textContent = 28;
-  makePlanets(demoRepos);
+  makeGalaxies([demoProfile]);
   makeContributionStars([]);
   makeSparks(Array.from({ length: 28 }));
   setStatus("Demo galaxy loaded.");
@@ -224,7 +322,9 @@ function selectPlanet(planet) {
   }
 
   selectedName.textContent = planet.repo.name;
-  selectedDescription.textContent = planet.repo.description || "No description yet.";
+  selectedDescription.textContent = `${planet.owner}${planet.isMain ? "'s main repository" : "'s repository"}: ${
+    planet.repo.description || "No description yet."
+  }`;
   selectedLink.href = planet.repo.html_url;
   selectedLink.removeAttribute("aria-disabled");
 }
@@ -238,7 +338,9 @@ function renderRepoList() {
     button.innerHTML = `
       <span style="--chip-color:${planet.color}"></span>
       <strong>${planet.repo.name}</strong>
-      <small>${planet.repo.language || "Code"} · ${planet.repo.stargazers_count || 0} stars</small>
+      <small>${planet.owner} · ${planet.isMain ? "main repo" : planet.repo.language || "Code"} · ${
+      planet.repo.stargazers_count || 0
+    } stars</small>
     `;
     button.addEventListener("click", () => selectPlanet(planet));
     repoList.appendChild(button);
@@ -263,8 +365,9 @@ function drawBackground(time) {
 }
 
 function drawOrbit(planet) {
+  if (planet.isMain) return;
   ctx.beginPath();
-  ctx.arc(center.x, center.y, planet.orbit, 0, Math.PI * 2);
+  ctx.ellipse(planet.home.x, planet.home.y, planet.orbit, planet.orbit * orbitYScale, 0, 0, Math.PI * 2);
   ctx.strokeStyle = "rgba(255,255,255,0.08)";
   ctx.lineWidth = 1;
   ctx.stroke();
@@ -282,12 +385,31 @@ function drawPlanet(planet) {
   glow.addColorStop(1, "rgba(255,255,255,0)");
   ctx.fillStyle = glow;
   ctx.beginPath();
-  ctx.arc(planet.x, planet.y, planet.radius * (isSelected ? 3.2 : 2.4), 0, Math.PI * 2);
+  ctx.arc(planet.x, planet.y, planet.radius * (planet.isMain ? 3.5 : isSelected ? 3.2 : 2.4), 0, Math.PI * 2);
   ctx.fill();
+
+  if (planet.isMain) {
+    ctx.save();
+    ctx.translate(planet.x, planet.y);
+    ctx.rotate(planet.angle * 0.25);
+    ctx.beginPath();
+    for (let point = 0; point < 16; point += 1) {
+      const radius = point % 2 === 0 ? planet.radius * 1.45 : planet.radius * 0.82;
+      const angle = (point / 16) * Math.PI * 2;
+      const x = Math.cos(angle) * radius;
+      const y = Math.sin(angle) * radius;
+      if (point === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.fillStyle = planet.color;
+    ctx.fill();
+    ctx.restore();
+  }
 
   ctx.beginPath();
   ctx.arc(planet.x, planet.y, planet.radius, 0, Math.PI * 2);
-  ctx.fillStyle = planet.color;
+  ctx.fillStyle = planet.isMain ? "#fff7cc" : planet.color;
   ctx.fill();
   ctx.lineWidth = isSelected ? 3 : 1;
   ctx.strokeStyle = isSelected ? "#ffffff" : "rgba(255,255,255,0.65)";
@@ -296,7 +418,12 @@ function drawPlanet(planet) {
   ctx.fillStyle = "#ffffff";
   ctx.font = "600 12px Inter, system-ui, sans-serif";
   ctx.textAlign = "center";
-  ctx.fillText(planet.repo.name.slice(0, 18), planet.x, planet.y + planet.radius + 18);
+  ctx.fillText(planet.repo.name.slice(0, 18), planet.x, planet.y + planet.radius + (planet.isMain ? 24 : 18));
+  if (currentProfiles.length > 1) {
+    ctx.fillStyle = "rgba(255,255,255,0.72)";
+    ctx.font = "700 11px Inter, system-ui, sans-serif";
+    ctx.fillText(planet.owner, planet.x, planet.y - planet.radius - 13);
+  }
 }
 
 function drawSpark(spark, delta) {
@@ -353,9 +480,9 @@ function animate(now) {
 
   if (!paused) {
     planets.forEach((planet) => {
+      if (planet.isMain) return;
       planet.angle += planet.speed * delta;
-      planet.x = center.x + Math.cos(planet.angle) * planet.orbit;
-      planet.y = center.y + Math.sin(planet.angle) * planet.orbit * 0.58;
+      updatePlanetPosition(planet);
     });
   }
 
@@ -373,6 +500,16 @@ profileForm.addEventListener("submit", (event) => {
 
 demoButton.addEventListener("click", loadDemo);
 
+modeButton.addEventListener("click", () => {
+  searchMode = searchMode === "single" ? "multi" : "single";
+  const isMulti = searchMode === "multi";
+  modeButton.textContent = isMulti ? "Multi-user search" : "Single user search";
+  usernameLabel.textContent = isMulti ? "GitHub usernames" : "GitHub username";
+  usernameInput.placeholder = isMulti ? "octocat, torvalds, gaearon" : "octocat";
+  usernameInput.setAttribute("aria-label", isMulti ? "GitHub usernames separated by commas" : "GitHub username");
+  setStatus(isMulti ? "Enter GitHub usernames separated by commas." : "Enter one GitHub username to launch.");
+});
+
 pauseButton.addEventListener("click", () => {
   paused = !paused;
   pauseButton.textContent = paused ? "Play" : "Pause";
@@ -380,6 +517,7 @@ pauseButton.addEventListener("click", () => {
 
 shuffleButton.addEventListener("click", () => {
   planets.forEach((planet) => {
+    if (planet.isMain) return;
     planet.angle = Math.random() * Math.PI * 2;
     planet.speed = 0.05 + Math.random() * 0.12;
   });

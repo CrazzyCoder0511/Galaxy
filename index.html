@@ -18,7 +18,7 @@
           </div>
 
           <form id="profileForm" class="search-panel">
-            <label for="usernameInput">GitHub username</label>
+            <label id="usernameLabel" for="usernameInput">GitHub username</label>
             <div class="search-row">
               <input
                 id="usernameInput"
@@ -43,13 +43,14 @@
             <strong id="starCount">0</strong>
           </div>
           <div>
-            <span>Stars</span>
+            <span>Activity</span>
             <strong id="activityCount">0</strong>
           </div>
         </aside>
 
         <div class="controls" aria-label="Galaxy controls">
           <button id="demoButton" type="button" title="Show demo galaxy">Demo</button>
+          <button id="modeButton" type="button" title="Switch search mode">Single user search</button>
           <button id="pauseButton" type="button" title="Pause animation">Pause</button>
           <button id="shuffleButton" type="button" title="Shuffle galaxy">Shuffle</button>
         </div>

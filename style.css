@@ -205,9 +205,15 @@ button:hover,
   right: 28px;
   bottom: 28px;
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 8px;
   padding: 8px;
   border-radius: 8px;
+}
+
+.controls button {
+  white-space: nowrap;
 }
 
 .status {
@@ -380,5 +386,6 @@ button:hover,
   .controls button {
     flex: 1;
     padding-inline: 8px;
+    white-space: normal;
   }
 }
