@@ -1,7 +1,7 @@
 # GitHub Galaxy
-# v 1.1.2
+# v 1.1.3
 Bug Fixes 
-- Planet speed slowed to match reall patterns.
+- Planet speed slowed to match real patterns.
 - Planet movement limited to orbitall range
 
 GitHub Galaxy is a simple, visual website that turns a GitHub user's repositories into a starry galaxy. Each repository appears as a planet, and clicking a planet opens the repository page.
@@ -13,26 +13,7 @@ GitHub Galaxy is a simple, visual website that turns a GitHub user's repositorie
 - Uses random colors and motion to create a dynamic visual effect
 - Clickable planets open the corresponding GitHub repository
 
-## Demo
-
-Open `Index.html` in a browser to view the galaxy visualization.
-
 # Setup
-## Method 1
-1. Clone the repository or download the files.
-2. Open `script.js`.
-3. Replace `YOUR_GITHUB` in the fetch URL with the GitHub username you want to display.
-
-Example:
-
-```js
-const response = await fetch(
-  "https://api.github.com/users/YOUR_GITHUB/repos"
-);
-```
-
-4. Save the file and open `Index.html` in your browser.
-## Method 2
 1. Go to the URL given in the description.
 2. Type your GitHub username in the text box 
 
