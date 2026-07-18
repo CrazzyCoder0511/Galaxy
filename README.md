@@ -1,9 +1,12 @@
 # GitHub Galaxy
-# v 1.1.3
+# v 1.1.4
 Bug Fixes 
 - Planet speed slowed to match real patterns.
 - Planet movement limited to orbitall range
+- Stat bar counter changed from counting contrabutions as stars to just saying stars.
 
+New Features
+- When a repo is viewed it also shows commits done in that repo
 GitHub Galaxy is a simple, visual website that turns a GitHub user's repositories into a starry galaxy. Each repository appears as a planet, and clicking a planet opens the repository page.
 
 ## Features
@@ -27,4 +30,5 @@ GitHub Galaxy is a simple, visual website that turns a GitHub user's repositorie
 
 - The site uses the public GitHub API, so rate limits may apply.
 - This is a great starting point for a personal portfolio or GitHub visualizer.
+- If any bug is found please inform us at a.mehrotra0511@gmail.com
 
