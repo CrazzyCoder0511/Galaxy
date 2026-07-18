@@ -100,7 +100,7 @@ h2 {
 .dock {
   border: 1px solid var(--line);
   background: var(--panel);
-  box-shadow: 0 22px 70px rgba(0, 0, 0, 0.26);
+  box-shadow: 0 22px 70px rgba(23, 23, 23, 0.26);
   backdrop-filter: blur(18px);
 }
 
@@ -131,13 +131,13 @@ input {
   border-radius: 7px;
   padding: 0 12px;
   outline: none;
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(35, 34, 34, 0.08);
   color: var(--ink);
 }
 
 input:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(125, 211, 252, 0.18);
+  box-shadow: 0 0 0 3px rgba(107, 203, 247, 0.18);
 }
 
 button,
@@ -173,7 +173,7 @@ button:hover,
   left: 28px;
   bottom: 28px;
   display: grid;
-  grid-template-columns: repeat(3, minmax(82px, 1fr));
+  grid-template-columns: repeat(4, minmax(72px, 1fr));
   border-radius: 8px;
 }
 
@@ -329,7 +329,7 @@ button:hover,
     left: 18px;
     right: 18px;
     bottom: 18px;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(4, 1fr);
   }
 
   .controls {

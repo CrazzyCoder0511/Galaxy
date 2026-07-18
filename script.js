@@ -7,6 +7,7 @@ const galaxyTitle = document.querySelector("#galaxyTitle");
 const repoCount = document.querySelector("#repoCount");
 const starCount = document.querySelector("#starCount");
 const activityCount = document.querySelector("#activityCount");
+const repoCommitCount = document.querySelector("#repoCommitCount");
 const statusText = document.querySelector("#statusText");
 const selectedName = document.querySelector("#selectedName");
 const selectedDescription = document.querySelector("#selectedDescription");
@@ -28,8 +29,11 @@ let pointer = { x: -9999, y: -9999 };
 let selectedPlanet = null;
 let paused = false;
 let lastFrame = performance.now();
+let currentUsername = null;
+const contributorCache = new Map();
 
 const palette = ["#7dd3fc", "#f9a8d4", "#fde68a", "#86efac", "#c4b5fd", "#fca5a5"];
+const orbitYScale = 0.58;
 
 const demoRepos = [
   {
@@ -124,7 +128,13 @@ function placePlanets() {
     planet.orbit = 70 + (maxOrbit * (index + 1)) / Math.max(planets.length, 1);
     planet.radius = 12 + Math.sqrt((planet.repo.stargazers_count || 0) + 1) * 3;
     planet.radius = Math.min(34, planet.radius);
+    updatePlanetPosition(planet);
   });
+}
+
+function updatePlanetPosition(planet) {
+  planet.x = center.x + Math.cos(planet.angle) * planet.orbit;
+  planet.y = center.y + Math.sin(planet.angle) * planet.orbit * orbitYScale;
 }
 
 function makeSparks(events) {
@@ -183,6 +193,8 @@ async function loadProfile(username) {
     const repos = await reposResponse.json();
     const events = eventsResponse.ok ? await eventsResponse.json() : [];
 
+    currentUsername = user.login;
+    contributorCache.clear();
     galaxyTitle.textContent = `${user.login}'s code galaxy`;
     repoCount.textContent = user.public_repos ?? repos.length;
     starCount.textContent = repos.reduce((sum, repo) => sum + (repo.stargazers_count || 0), 0);
@@ -199,6 +211,8 @@ async function loadProfile(username) {
 }
 
 function loadDemo() {
+  currentUsername = "demo";
+  contributorCache.clear();
   galaxyTitle.textContent = "Demo code galaxy";
   repoCount.textContent = demoRepos.length;
   starCount.textContent = demoRepos.reduce((sum, repo) => sum + repo.stargazers_count, 0);
@@ -213,6 +227,58 @@ function setStatus(message) {
   statusText.textContent = message;
 }
 
+function demoCommitCount(repo) {
+  const seed = repo.name.split("").reduce((sum, char) => sum + char.charCodeAt(0), 0);
+  return 8 + (seed % 40) + (repo.forks_count || 0) * 3;
+}
+
+async function updateRepoCommitCount(planet) {
+  if (!planet) {
+    repoCommitCount.textContent = "—";
+    return;
+  }
+
+  if (currentUsername === "demo") {
+    repoCommitCount.textContent = demoCommitCount(planet.repo);
+    return;
+  }
+
+  const fullName = planet.repo.full_name;
+  if (!fullName || !currentUsername) {
+    repoCommitCount.textContent = "—";
+    return;
+  }
+
+  if (contributorCache.has(fullName)) {
+    repoCommitCount.textContent = contributorCache.get(fullName);
+    return;
+  }
+
+  repoCommitCount.textContent = "…";
+
+  try {
+    const response = await fetch(
+      `https://api.github.com/repos/${encodeURIComponent(fullName)}/contributors?per_page=100`,
+    );
+    if (!response.ok) throw new Error("Could not load commit count.");
+
+    const contributors = await response.json();
+    const match = contributors.find(
+      (contributor) => contributor.login.toLowerCase() === currentUsername.toLowerCase(),
+    );
+    const count = match?.contributions ?? 0;
+    contributorCache.set(fullName, count);
+
+    if (selectedPlanet === planet) {
+      repoCommitCount.textContent = count;
+    }
+  } catch {
+    if (selectedPlanet === planet) {
+      repoCommitCount.textContent = "—";
+    }
+  }
+}
+
 function selectPlanet(planet) {
   selectedPlanet = planet;
   if (!planet) {
@@ -220,6 +286,7 @@ function selectPlanet(planet) {
     selectedDescription.textContent = "Repositories become planets. Your public contributions become stars around the galaxy.";
     selectedLink.href = "#";
     selectedLink.setAttribute("aria-disabled", "true");
+    repoCommitCount.textContent = "—";
     return;
   }
 
@@ -227,6 +294,7 @@ function selectPlanet(planet) {
   selectedDescription.textContent = planet.repo.description || "No description yet.";
   selectedLink.href = planet.repo.html_url;
   selectedLink.removeAttribute("aria-disabled");
+  updateRepoCommitCount(planet);
 }
 
 function renderRepoList() {
@@ -264,7 +332,7 @@ function drawBackground(time) {
 
 function drawOrbit(planet) {
   ctx.beginPath();
-  ctx.arc(center.x, center.y, planet.orbit, 0, Math.PI * 2);
+  ctx.ellipse(center.x, center.y, planet.orbit, planet.orbit * orbitYScale, 0, 0, Math.PI * 2);
   ctx.strokeStyle = "rgba(255,255,255,0.08)";
   ctx.lineWidth = 1;
   ctx.stroke();
@@ -354,8 +422,7 @@ function animate(now) {
   if (!paused) {
     planets.forEach((planet) => {
       planet.angle += planet.speed * delta;
-      planet.x = center.x + Math.cos(planet.angle) * planet.orbit;
-      planet.y = center.y + Math.sin(planet.angle) * planet.orbit * 0.58;
+      updatePlanetPosition(planet);
     });
   }
 
