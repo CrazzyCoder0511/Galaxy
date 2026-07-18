@@ -50,6 +50,11 @@ a {
   width: 100%;
   height: 100%;
   cursor: crosshair;
+  touch-action: none;
+}
+
+#galaxyCanvas.is-panning {
+  cursor: grabbing;
 }
 
 .topbar {
@@ -173,12 +178,12 @@ button:hover,
   left: 28px;
   bottom: 28px;
   display: grid;
-  grid-template-columns: repeat(4, minmax(72px, 1fr));
+  grid-template-columns: repeat(4, minmax(56px, 1fr));
   border-radius: 8px;
 }
 
 .hud div {
-  padding: 14px 18px;
+  padding: 8px 12px;
   border-right: 1px solid var(--line);
 }
 
@@ -189,14 +194,14 @@ button:hover,
 .hud span {
   display: block;
   color: var(--muted);
-  font-size: 0.76rem;
+  font-size: 0.66rem;
   font-weight: 700;
 }
 
 .hud strong {
   display: block;
-  margin-top: 3px;
-  font-size: 1.55rem;
+  margin-top: 2px;
+  font-size: 1.15rem;
 }
 
 .controls {
@@ -208,6 +213,12 @@ button:hover,
   gap: 8px;
   padding: 8px;
   border-radius: 8px;
+}
+
+#zoomInButton,
+#zoomOutButton {
+  min-width: 40px;
+  padding: 0;
 }
 
 .status {

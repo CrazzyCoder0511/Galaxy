@@ -16,6 +16,9 @@ const repoList = document.querySelector("#repoList");
 const demoButton = document.querySelector("#demoButton");
 const pauseButton = document.querySelector("#pauseButton");
 const shuffleButton = document.querySelector("#shuffleButton");
+const zoomInButton = document.querySelector("#zoomInButton");
+const zoomOutButton = document.querySelector("#zoomOutButton");
+const zoomResetButton = document.querySelector("#zoomResetButton");
 
 let width = 0;
 let height = 0;
@@ -26,13 +29,32 @@ let starfield = [];
 let contributionStars = [];
 let currentEvents = [];
 let pointer = { x: -9999, y: -9999 };
+let pointerWorld = { x: -9999, y: -9999 };
 let selectedPlanet = null;
 let paused = false;
+let zoom = 1;
+let panX = 0;
+let panY = 0;
+let isPanning = false;
+let panStartPointer = { x: 0, y: 0 };
+let panStartOffset = { x: 0, y: 0 };
+const MIN_ZOOM = 0.5;
+const MAX_ZOOM = 3;
+const ZOOM_LABEL_THRESHOLD = 2.2;
 let lastFrame = performance.now();
 let currentUsername = null;
 const contributorCache = new Map();
+const profileCache = new Map();
+
+// Leave as-is for direct GitHub API (60 requests/hour per visitor IP).
+// After deploying the Cloudflare Worker below, set this to your worker URL:
+// const GITHUB_API_BASE = "https://github-galaxy-proxy.YOUR_SUBDOMAIN.workers.dev";
+const GITHUB_API_BASE = "https://api.github.com";
+const PROFILE_CACHE_TTL_MS = 1000 * 60 * 60;
+const PROFILE_CACHE_STORAGE_KEY = "github-galaxy-profiles-v1";
 
 const palette = ["#7dd3fc", "#f9a8d4", "#fde68a", "#86efac", "#c4b5fd", "#fca5a5"];
+const githubHeaders = { Accept: "application/vnd.github+json" };
 const orbitYScale = 0.58;
 
 const demoRepos = [
@@ -132,6 +154,27 @@ function placePlanets() {
   });
 }
 
+function toWorld(point) {
+  return {
+    x: center.x + (point.x - panX - center.x) / zoom,
+    y: center.y + (point.y - panY - center.y) / zoom,
+  };
+}
+
+function zoomAt(screenX, screenY, factor) {
+  const newZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom * factor));
+  const world = toWorld({ x: screenX, y: screenY });
+  zoom = newZoom;
+  panX = screenX - center.x - (world.x - center.x) * zoom;
+  panY = screenY - center.y - (world.y - center.y) * zoom;
+}
+
+function resetView() {
+  zoom = 1;
+  panX = 0;
+  panY = 0;
+}
+
 function updatePlanetPosition(planet) {
   planet.x = center.x + Math.cos(planet.angle) * planet.orbit;
   planet.y = center.y + Math.sin(planet.angle) * planet.orbit * orbitYScale;
@@ -172,39 +215,128 @@ function makeContributionStars(events) {
   });
 }
 
+function setRepoCommitCount(value) {
+  if (repoCommitCount) repoCommitCount.textContent = value;
+}
+
+function readStoredProfile(cacheKey) {
+  try {
+    const raw = localStorage.getItem(PROFILE_CACHE_STORAGE_KEY);
+    if (!raw) return null;
+
+    const entries = JSON.parse(raw);
+    const entry = entries[cacheKey];
+    if (!entry || Date.now() - entry.savedAt > PROFILE_CACHE_TTL_MS) return null;
+
+    return entry.data;
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredProfile(cacheKey, data) {
+  try {
+    const raw = localStorage.getItem(PROFILE_CACHE_STORAGE_KEY);
+    const entries = raw ? JSON.parse(raw) : {};
+    entries[cacheKey] = { savedAt: Date.now(), data };
+    localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, JSON.stringify(entries));
+  } catch {
+    // Ignore storage failures (private mode, quota, etc.).
+  }
+}
+
+function githubApiUrl(path) {
+  if (path.startsWith("http://") || path.startsWith("https://")) return path;
+  return `${GITHUB_API_BASE}${path.startsWith("/") ? path : `/${path}`}`;
+}
+
+async function githubFetch(path) {
+  const response = await fetch(githubApiUrl(path), { headers: githubHeaders });
+  let body = null;
+
+  try {
+    body = await response.json();
+  } catch {
+    body = null;
+  }
+
+  return { response, body };
+}
+
+function githubErrorMessage(response, body, fallback) {
+  if (response.status === 403 && body?.message?.toLowerCase().includes("rate limit")) {
+    return "GitHub API rate limit reached. Wait about an hour, then try again. Demo mode still works.";
+  }
+  if (response.status === 404) {
+    return "That GitHub profile was not found. Check the username and try again.";
+  }
+  if (body?.message) return body.message;
+  return fallback;
+}
+
+function applyProfileData(user, repos, events) {
+  currentUsername = user.login;
+  contributorCache.clear();
+  galaxyTitle.textContent = `${user.login}'s code galaxy`;
+  repoCount.textContent = user.public_repos ?? repos.length;
+  starCount.textContent = repos.reduce((sum, repo) => sum + (repo.stargazers_count || 0), 0);
+  activityCount.textContent = events.length;
+  makePlanets(repos.length ? repos : demoRepos);
+  makeContributionStars(events);
+  makeSparks(events);
+  setStatus(`${repos.length} public repositories loaded.`);
+}
+
 async function loadProfile(username) {
   const cleanName = username.trim();
   if (!cleanName) return;
+
+  const cacheKey = cleanName.toLowerCase();
+  if (profileCache.has(cacheKey)) {
+    const cached = profileCache.get(cacheKey);
+    applyProfileData(...cached);
+    setStatus(`${cached[1].length} public repositories loaded (cached).`);
+    return;
+  }
+
+  const storedProfile = readStoredProfile(cacheKey);
+  if (storedProfile) {
+    profileCache.set(cacheKey, storedProfile);
+    applyProfileData(...storedProfile);
+    setStatus(`${storedProfile[1].length} public repositories loaded (cached).`);
+    return;
+  }
 
   setStatus(`Launching ${cleanName}'s galaxy...`);
   profileForm.classList.add("is-loading");
 
   try {
-    const [userResponse, reposResponse, eventsResponse] = await Promise.all([
-      fetch(`https://api.github.com/users/${encodeURIComponent(cleanName)}`),
-      fetch(`https://api.github.com/users/${encodeURIComponent(cleanName)}/repos?sort=updated&per_page=100`),
-      fetch(`https://api.github.com/users/${encodeURIComponent(cleanName)}/events/public?per_page=50`),
+    const userResult = await githubFetch(`/users/${encodeURIComponent(cleanName)}`);
+    if (!userResult.response.ok) {
+      throw new Error(githubErrorMessage(userResult.response, userResult.body, "Could not load that GitHub profile."));
+    }
+
+    const [reposResult, eventsResult] = await Promise.all([
+      githubFetch(`/users/${encodeURIComponent(cleanName)}/repos?sort=updated&per_page=100`),
+      githubFetch(`/users/${encodeURIComponent(cleanName)}/events/public?per_page=50`),
     ]);
 
-    if (!userResponse.ok) throw new Error("That GitHub profile was not found.");
-    if (!reposResponse.ok) throw new Error("GitHub did not return repository data.");
+    if (!reposResult.response.ok) {
+      throw new Error(
+        githubErrorMessage(reposResult.response, reposResult.body, "GitHub did not return repository data."),
+      );
+    }
 
-    const user = await userResponse.json();
-    const repos = await reposResponse.json();
-    const events = eventsResponse.ok ? await eventsResponse.json() : [];
+    const user = userResult.body;
+    const repos = Array.isArray(reposResult.body) ? reposResult.body : [];
+    const events = eventsResult.response.ok && Array.isArray(eventsResult.body) ? eventsResult.body : [];
+    const profileData = [user, repos, events];
 
-    currentUsername = user.login;
-    contributorCache.clear();
-    galaxyTitle.textContent = `${user.login}'s code galaxy`;
-    repoCount.textContent = user.public_repos ?? repos.length;
-    starCount.textContent = repos.reduce((sum, repo) => sum + (repo.stargazers_count || 0), 0);
-    activityCount.textContent = events.length;
-    makePlanets(repos.length ? repos : demoRepos);
-    makeContributionStars(events);
-    makeSparks(events);
-    setStatus(`${repos.length} public repositories loaded.`);
+    profileCache.set(cacheKey, profileData);
+    writeStoredProfile(cacheKey, profileData);
+    applyProfileData(user, repos, events);
   } catch (error) {
-    setStatus(error.message);
+    setStatus(error.message || "Could not load that GitHub profile.");
   } finally {
     profileForm.classList.remove("is-loading");
   }
@@ -234,35 +366,41 @@ function demoCommitCount(repo) {
 
 async function updateRepoCommitCount(planet) {
   if (!planet) {
-    repoCommitCount.textContent = "—";
+    setRepoCommitCount("—");
     return;
   }
 
   if (currentUsername === "demo") {
-    repoCommitCount.textContent = demoCommitCount(planet.repo);
+    setRepoCommitCount(demoCommitCount(planet.repo));
     return;
   }
 
   const fullName = planet.repo.full_name;
   if (!fullName || !currentUsername) {
-    repoCommitCount.textContent = "—";
+    setRepoCommitCount("—");
     return;
   }
 
   if (contributorCache.has(fullName)) {
-    repoCommitCount.textContent = contributorCache.get(fullName);
+    setRepoCommitCount(contributorCache.get(fullName));
     return;
   }
 
-  repoCommitCount.textContent = "…";
+  setRepoCommitCount("…");
+
+  const [owner, repoName] = fullName.split("/");
+  if (!owner || !repoName) {
+    setRepoCommitCount("—");
+    return;
+  }
 
   try {
-    const response = await fetch(
-      `https://api.github.com/repos/${encodeURIComponent(fullName)}/contributors?per_page=100`,
+    const { response, body } = await githubFetch(
+      `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repoName)}/contributors?per_page=100`,
     );
     if (!response.ok) throw new Error("Could not load commit count.");
 
-    const contributors = await response.json();
+    const contributors = Array.isArray(body) ? body : [];
     const match = contributors.find(
       (contributor) => contributor.login.toLowerCase() === currentUsername.toLowerCase(),
     );
@@ -270,23 +408,24 @@ async function updateRepoCommitCount(planet) {
     contributorCache.set(fullName, count);
 
     if (selectedPlanet === planet) {
-      repoCommitCount.textContent = count;
+      setRepoCommitCount(count);
     }
   } catch {
     if (selectedPlanet === planet) {
-      repoCommitCount.textContent = "—";
+      setRepoCommitCount("—");
     }
   }
 }
 
 function selectPlanet(planet) {
+  if (planet === selectedPlanet) return;
   selectedPlanet = planet;
   if (!planet) {
     selectedName.textContent = "Hover a planet";
     selectedDescription.textContent = "Repositories become planets. Your public contributions become stars around the galaxy.";
     selectedLink.href = "#";
     selectedLink.setAttribute("aria-disabled", "true");
-    repoCommitCount.textContent = "—";
+    setRepoCommitCount("—");
     return;
   }
 
@@ -340,7 +479,7 @@ function drawOrbit(planet) {
 
 function drawPlanet(planet) {
   const isSelected = selectedPlanet === planet;
-  const hoverDistance = Math.hypot(pointer.x - planet.x, pointer.y - planet.y);
+  const hoverDistance = Math.hypot(pointerWorld.x - planet.x, pointerWorld.y - planet.y);
   const isHovered = hoverDistance < planet.radius + 10;
   if (isHovered) selectPlanet(planet);
 
@@ -388,19 +527,21 @@ function drawSpark(spark, delta) {
 
 function drawContributionStar(star, time) {
   const twinkle = 0.55 + Math.sin(time * 0.004 + star.pulse) * 0.35;
-  const hoverDistance = Math.hypot(pointer.x - star.x, pointer.y - star.y);
+  const hoverDistance = Math.hypot(pointerWorld.x - star.x, pointerWorld.y - star.y);
+  const isHovered = hoverDistance < 14;
+  const showLabel = isHovered || zoom >= ZOOM_LABEL_THRESHOLD;
 
   ctx.beginPath();
-  ctx.arc(star.x, star.y, star.radius * (hoverDistance < 14 ? 2.4 : 1), 0, Math.PI * 2);
+  ctx.arc(star.x, star.y, star.radius * (isHovered ? 2.4 : 1), 0, Math.PI * 2);
   ctx.fillStyle = star.color;
   ctx.globalAlpha = Math.max(0.25, twinkle);
   ctx.shadowColor = star.color;
-  ctx.shadowBlur = hoverDistance < 14 ? 22 : 10;
+  ctx.shadowBlur = isHovered ? 22 : 10;
   ctx.fill();
   ctx.shadowBlur = 0;
   ctx.globalAlpha = 1;
 
-  if (hoverDistance < 14) {
+  if (showLabel) {
     const repoName = star.event.repo?.name || "Contribution";
     ctx.fillStyle = "#ffffff";
     ctx.font = "700 12px Inter, system-ui, sans-serif";
@@ -415,6 +556,14 @@ function drawContributionStar(star, time) {
 function animate(now) {
   const delta = Math.min((now - lastFrame) / 1000, 0.04);
   lastFrame = now;
+  pointerWorld = toWorld(pointer);
+
+  ctx.save();
+  ctx.translate(panX, panY);
+  ctx.translate(center.x, center.y);
+  ctx.scale(zoom, zoom);
+  ctx.translate(-center.x, -center.y);
+
   drawBackground(now);
 
   planets.forEach(drawOrbit);
@@ -429,6 +578,8 @@ function animate(now) {
   contributionStars.forEach((star) => drawContributionStar(star, now));
   sparks.forEach((spark) => drawSpark(spark, paused ? 0 : delta));
   planets.forEach(drawPlanet);
+
+  ctx.restore();
 
   requestAnimationFrame(animate);
 }
@@ -458,11 +609,56 @@ canvas.addEventListener("pointermove", (event) => {
   const rect = canvas.getBoundingClientRect();
   pointer.x = event.clientX - rect.left;
   pointer.y = event.clientY - rect.top;
+
+  if (isPanning) {
+    panX = panStartOffset.x + (pointer.x - panStartPointer.x);
+    panY = panStartOffset.y + (pointer.y - panStartPointer.y);
+  }
 });
 
 canvas.addEventListener("pointerleave", () => {
   pointer = { x: -9999, y: -9999 };
 });
+
+canvas.addEventListener("pointerdown", (event) => {
+  isPanning = true;
+  canvas.setPointerCapture(event.pointerId);
+  panStartPointer = { x: pointer.x, y: pointer.y };
+  panStartOffset = { x: panX, y: panY };
+  canvas.classList.add("is-panning");
+});
+
+canvas.addEventListener("pointerup", (event) => {
+  isPanning = false;
+  canvas.releasePointerCapture(event.pointerId);
+  canvas.classList.remove("is-panning");
+});
+
+canvas.addEventListener("pointercancel", () => {
+  isPanning = false;
+  canvas.classList.remove("is-panning");
+});
+
+canvas.addEventListener(
+  "wheel",
+  (event) => {
+    event.preventDefault();
+    const rect = canvas.getBoundingClientRect();
+    const screenX = event.clientX - rect.left;
+    const screenY = event.clientY - rect.top;
+    const factor = Math.exp(-event.deltaY * 0.0015);
+    zoomAt(screenX, screenY, factor);
+  },
+  { passive: false },
+);
+
+canvas.addEventListener("dblclick", () => {
+  resetView();
+});
+
+zoomInButton.addEventListener("click", () => zoomAt(center.x, center.y, 1.3));
+zoomOutButton.addEventListener("click", () => zoomAt(center.x, center.y, 1 / 1.3));
+zoomResetButton.addEventListener("click", resetView);
 
 window.addEventListener("resize", resizeCanvas);
 
