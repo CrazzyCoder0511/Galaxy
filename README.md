@@ -1,20 +1,25 @@
 # GitHub Galaxy
-# v 1.1.4
+# v 1.1.9
 Bug Fixes 
 - Planet speed slowed to match real patterns.
-- Planet movement limited to orbitall range
+- Planet movement limited to orbitall range.
 - Stat bar counter changed from counting contrabutions as stars to just saying stars.
+- Statistics bar size changed to smaller.
 
 New Features
-- When a repo is viewed it also shows commits done in that repo
+- When a repo is viewed it also shows commits done in that repo.
+- Auto Label contrabutions at high zoom.
+- Zoom in & out feature added.
+  
 GitHub Galaxy is a simple, visual website that turns a GitHub user's repositories into a starry galaxy. Each repository appears as a planet, and clicking a planet opens the repository page.
 
 ## Features
 
-- Fetches public GitHub repositories for a specified user
-- Displays each repository as a floating planet in a galaxy layout
-- Uses random colors and motion to create a dynamic visual effect
-- Clickable planets open the corresponding GitHub repository
+- Fetches public GitHub repositories for a specified user.
+- Displays each repository as a floating planet in a galaxy layout.
+- Uses random colors and motion to create a dynamic visual effect.
+- Clickable planets open the corresponding GitHub repository.
+- Zoom in & out feature added.
 
 # Setup
 1. Go to the URL given in the description.
