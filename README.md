@@ -1,8 +1,6 @@
 # GitHub Galaxy
 # v 1.1.9
 Bug Fixes 
-- Planet speed slowed to match real patterns.
-- Planet movement limited to orbitall range.
 - Stat bar counter changed from counting contrabutions as stars to just saying stars.
 - Statistics bar size changed to smaller.
 
