@@ -21,6 +21,10 @@ const zoomOutButton = document.querySelector("#zoomOutButton");
 const zoomResetButton = document.querySelector("#zoomResetButton");
 const exportButton = document.querySelector("#exportButton");
 const soundToggleButton = document.querySelector("#soundToggleButton");
+const zoomBadge = document.querySelector("#zoomBadge");
+const helpButton = document.querySelector("#helpButton");
+const hintsPanel = document.querySelector("#hintsPanel");
+const hintsCloseButton = document.querySelector("#hintsCloseButton");
 
 let width = 0;
 let height = 0;
@@ -58,9 +62,11 @@ const GITHUB_API_BASE = "https://api.github.com";
 const PROFILE_CACHE_TTL_MS = 1000 * 60 * 60;
 const PROFILE_CACHE_STORAGE_KEY = "github-galaxy-profiles-v1";
 const SOUND_MUTED_STORAGE_KEY = "github-galaxy-muted-v1";
+const HINTS_SEEN_STORAGE_KEY = "github-galaxy-hints-seen-v1";
 
 let audioCtx = null;
 let soundMuted = localStorage.getItem(SOUND_MUTED_STORAGE_KEY) === "1";
+let zoomBadgeTimer = null;
 
 const palette = ["#7dd3fc", "#f9a8d4", "#fde68a", "#86efac", "#c4b5fd", "#fca5a5"];
 const githubHeaders = { Accept: "application/vnd.github+json" };
@@ -176,12 +182,22 @@ function zoomAt(screenX, screenY, factor) {
   zoom = newZoom;
   panX = screenX - center.x - (world.x - center.x) * zoom;
   panY = screenY - center.y - (world.y - center.y) * zoom;
+  showZoomBadge();
 }
 
 function resetView() {
   zoom = 1;
   panX = 0;
   panY = 0;
+  showZoomBadge();
+}
+
+function showZoomBadge() {
+  if (!zoomBadge) return;
+  zoomBadge.textContent = `${Math.round(zoom * 100)}%`;
+  zoomBadge.classList.add("is-visible");
+  if (zoomBadgeTimer) clearTimeout(zoomBadgeTimer);
+  zoomBadgeTimer = setTimeout(() => zoomBadge.classList.remove("is-visible"), 1100);
 }
 
 function updatePlanetPosition(planet) {
@@ -493,10 +509,23 @@ function setSoundMuted(value) {
   soundToggleButton.title = soundMuted ? "Unmute sound effects" : "Mute sound effects";
 }
 
+function setHintsOpen(open) {
+  hintsPanel.hidden = !open;
+  helpButton.setAttribute("aria-expanded", open ? "true" : "false");
+  if (open) {
+    try {
+      localStorage.setItem(HINTS_SEEN_STORAGE_KEY, "1");
+    } catch {
+      // Ignore storage failures (private mode, quota, etc.).
+    }
+  }
+}
+
 function selectPlanet(planet) {
   if (planet === selectedPlanet) return;
   if (planet) playSelectChime();
   selectedPlanet = planet;
+  updateActiveChip();
   if (!planet) {
     selectedName.textContent = "Hover a planet";
     selectedDescription.textContent = "Repositories become planets. Your public contributions become stars around the galaxy.";
@@ -525,7 +554,15 @@ function renderRepoList() {
       <small>${planet.repo.language || "Code"} · ${planet.repo.stargazers_count || 0} stars</small>
     `;
     button.addEventListener("click", () => selectPlanet(planet));
+    planet.chip = button;
     repoList.appendChild(button);
+  });
+  updateActiveChip();
+}
+
+function updateActiveChip() {
+  planets.forEach((planet) => {
+    if (planet.chip) planet.chip.classList.toggle("is-active", planet === selectedPlanet);
   });
 }
 
@@ -715,6 +752,9 @@ shuffleButton.addEventListener("click", () => {
 
 soundToggleButton.addEventListener("click", () => setSoundMuted(!soundMuted));
 
+helpButton.addEventListener("click", () => setHintsOpen(hintsPanel.hidden));
+hintsCloseButton.addEventListener("click", () => setHintsOpen(false));
+
 canvas.addEventListener("pointermove", (event) => {
   const rect = canvas.getBoundingClientRect();
   pointer.x = event.clientX - rect.left;
@@ -780,6 +820,11 @@ zoomResetButton.addEventListener("click", () => {
 });
 
 window.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !hintsPanel.hidden) {
+    setHintsOpen(false);
+    return;
+  }
+
   const key = event.key.toLowerCase();
   if (!PAN_KEYS.has(key)) return;
   if (document.activeElement === usernameInput) return;
@@ -799,6 +844,9 @@ window.addEventListener("blur", () => {
 window.addEventListener("resize", resizeCanvas);
 
 setSoundMuted(soundMuted);
+if (localStorage.getItem(HINTS_SEEN_STORAGE_KEY) !== "1") {
+  setHintsOpen(true);
+}
 resizeCanvas();
 loadDemo();
 requestAnimationFrame(animate);
