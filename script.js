@@ -20,6 +20,7 @@ const zoomInButton = document.querySelector("#zoomInButton");
 const zoomOutButton = document.querySelector("#zoomOutButton");
 const zoomResetButton = document.querySelector("#zoomResetButton");
 const exportButton = document.querySelector("#exportButton");
+const soundToggleButton = document.querySelector("#soundToggleButton");
 
 let width = 0;
 let height = 0;
@@ -42,6 +43,9 @@ let panStartOffset = { x: 0, y: 0 };
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 3;
 const ZOOM_LABEL_THRESHOLD = 2.2;
+const PAN_KEYS = new Set(["w", "a", "s", "d"]);
+const pressedPanKeys = new Set();
+const PAN_SPEED = 420;
 let lastFrame = performance.now();
 let currentUsername = null;
 const contributorCache = new Map();
@@ -53,6 +57,10 @@ const profileCache = new Map();
 const GITHUB_API_BASE = "https://api.github.com";
 const PROFILE_CACHE_TTL_MS = 1000 * 60 * 60;
 const PROFILE_CACHE_STORAGE_KEY = "github-galaxy-profiles-v1";
+const SOUND_MUTED_STORAGE_KEY = "github-galaxy-muted-v1";
+
+let audioCtx = null;
+let soundMuted = localStorage.getItem(SOUND_MUTED_STORAGE_KEY) === "1";
 
 const palette = ["#7dd3fc", "#f9a8d4", "#fde68a", "#86efac", "#c4b5fd", "#fca5a5"];
 const githubHeaders = { Accept: "application/vnd.github+json" };
@@ -423,8 +431,71 @@ async function updateRepoCommitCount(planet) {
   }
 }
 
+function getAudioContext() {
+  if (!audioCtx) {
+    try {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    } catch {
+      audioCtx = null;
+    }
+  }
+  if (audioCtx && audioCtx.state === "suspended") {
+    audioCtx.resume().catch(() => {});
+  }
+  return audioCtx;
+}
+
+function playTone({ frequency, frequencyEnd, duration = 0.15, type = "sine", peak = 0.16, delay = 0 }) {
+  if (soundMuted) return;
+  const ctxAudio = getAudioContext();
+  if (!ctxAudio) return;
+
+  const startTime = ctxAudio.currentTime + delay;
+  const oscillator = ctxAudio.createOscillator();
+  const gain = ctxAudio.createGain();
+  oscillator.type = type;
+  oscillator.frequency.setValueAtTime(frequency, startTime);
+  if (frequencyEnd) {
+    oscillator.frequency.exponentialRampToValueAtTime(Math.max(frequencyEnd, 1), startTime + duration);
+  }
+
+  gain.gain.setValueAtTime(0, startTime);
+  gain.gain.linearRampToValueAtTime(peak, startTime + 0.015);
+  gain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
+
+  oscillator.connect(gain);
+  gain.connect(ctxAudio.destination);
+  oscillator.start(startTime);
+  oscillator.stop(startTime + duration + 0.05);
+}
+
+function playSelectChime() {
+  playTone({ frequency: 660, duration: 0.12, peak: 0.12 });
+  playTone({ frequency: 880, duration: 0.16, peak: 0.09, delay: 0.05 });
+}
+
+function playShuffleWhoosh() {
+  playTone({ frequency: 520, frequencyEnd: 110, duration: 0.35, type: "sawtooth", peak: 0.12 });
+}
+
+function playUiClick() {
+  playTone({ frequency: 340, duration: 0.07, type: "square", peak: 0.07 });
+}
+
+function setSoundMuted(value) {
+  soundMuted = value;
+  try {
+    localStorage.setItem(SOUND_MUTED_STORAGE_KEY, soundMuted ? "1" : "0");
+  } catch {
+    // Ignore storage failures (private mode, quota, etc.).
+  }
+  soundToggleButton.textContent = soundMuted ? "🔇" : "🔊";
+  soundToggleButton.title = soundMuted ? "Unmute sound effects" : "Mute sound effects";
+}
+
 function selectPlanet(planet) {
   if (planet === selectedPlanet) return;
+  if (planet) playSelectChime();
   selectedPlanet = planet;
   if (!planet) {
     selectedName.textContent = "Hover a planet";
@@ -559,10 +630,27 @@ function drawContributionStar(star, time) {
   }
 }
 
+function applyPanKeys(delta) {
+  if (!pressedPanKeys.size) return;
+
+  let dx = 0;
+  let dy = 0;
+  if (pressedPanKeys.has("w")) dy += 1;
+  if (pressedPanKeys.has("s")) dy -= 1;
+  if (pressedPanKeys.has("a")) dx += 1;
+  if (pressedPanKeys.has("d")) dx -= 1;
+  if (!dx && !dy) return;
+
+  const length = Math.hypot(dx, dy);
+  panX += (dx / length) * PAN_SPEED * delta;
+  panY += (dy / length) * PAN_SPEED * delta;
+}
+
 function animate(now) {
   const delta = Math.min((now - lastFrame) / 1000, 0.04);
   lastFrame = now;
   pointerWorld = toWorld(pointer);
+  applyPanKeys(delta);
 
   ctx.save();
   ctx.translate(panX, panY);
@@ -622,7 +710,10 @@ shuffleButton.addEventListener("click", () => {
   });
   makeContributionStars(currentEvents);
   makeSparks(sparks);
+  playShuffleWhoosh();
 });
+
+soundToggleButton.addEventListener("click", () => setSoundMuted(!soundMuted));
 
 canvas.addEventListener("pointermove", (event) => {
   const rect = canvas.getBoundingClientRect();
@@ -675,12 +766,39 @@ canvas.addEventListener("dblclick", () => {
   resetView();
 });
 
-zoomInButton.addEventListener("click", () => zoomAt(center.x, center.y, 1.3));
-zoomOutButton.addEventListener("click", () => zoomAt(center.x, center.y, 1 / 1.3));
-zoomResetButton.addEventListener("click", resetView);
+zoomInButton.addEventListener("click", () => {
+  zoomAt(center.x, center.y, 1.3);
+  playUiClick();
+});
+zoomOutButton.addEventListener("click", () => {
+  zoomAt(center.x, center.y, 1 / 1.3);
+  playUiClick();
+});
+zoomResetButton.addEventListener("click", () => {
+  resetView();
+  playUiClick();
+});
+
+window.addEventListener("keydown", (event) => {
+  const key = event.key.toLowerCase();
+  if (!PAN_KEYS.has(key)) return;
+  if (document.activeElement === usernameInput) return;
+
+  pressedPanKeys.add(key);
+  event.preventDefault();
+});
+
+window.addEventListener("keyup", (event) => {
+  pressedPanKeys.delete(event.key.toLowerCase());
+});
+
+window.addEventListener("blur", () => {
+  pressedPanKeys.clear();
+});
 
 window.addEventListener("resize", resizeCanvas);
 
+setSoundMuted(soundMuted);
 resizeCanvas();
 loadDemo();
 requestAnimationFrame(animate);
