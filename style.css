@@ -93,6 +93,11 @@ h1 {
   line-height: 0.95;
 }
 
+#galaxyTitle.is-loaded {
+  font-size: clamp(1.25rem, 2.4vw, 1.75rem);
+  line-height: 1.15;
+}
+
 h2 {
   font-size: 1.25rem;
   line-height: 1.15;
@@ -210,6 +215,9 @@ button:hover,
   right: 28px;
   bottom: 28px;
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  max-width: min(420px, calc(100vw - 56px));
   gap: 8px;
   padding: 8px;
   border-radius: 8px;

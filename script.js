@@ -19,6 +19,7 @@ const shuffleButton = document.querySelector("#shuffleButton");
 const zoomInButton = document.querySelector("#zoomInButton");
 const zoomOutButton = document.querySelector("#zoomOutButton");
 const zoomResetButton = document.querySelector("#zoomResetButton");
+const exportButton = document.querySelector("#exportButton");
 
 let width = 0;
 let height = 0;
@@ -201,13 +202,16 @@ function makeContributionStars(events) {
         repo: { name: `demo/repo-${index + 1}` },
       }));
 
-  contributionStars = sourceEvents.slice(0, 80).map((event, index) => {
-    const ring = Math.random() * Math.min(width, height) * 0.42;
-    const angle = Math.random() * Math.PI * 2;
+  const stars = sourceEvents.slice(0, 80);
+  const angleStep = (Math.PI * 2) / Math.max(stars.length, 1);
+
+  contributionStars = stars.map((event, index) => {
+    const ring = Math.sqrt(Math.random()) * Math.min(width, height) * 0.46;
+    const angle = angleStep * index + (Math.random() - 0.5) * angleStep * 0.7;
     return {
       event,
-      x: center.x + Math.cos(angle) * ring + (Math.random() - 0.5) * 80,
-      y: center.y + Math.sin(angle) * ring * 0.62 + (Math.random() - 0.5) * 80,
+      x: center.x + Math.cos(angle) * ring + (Math.random() - 0.5) * 30,
+      y: center.y + Math.sin(angle) * ring * 0.62 + (Math.random() - 0.5) * 30,
       radius: 1.4 + Math.random() * 2.8,
       pulse: Math.random() * Math.PI * 2,
       color: palette[index % palette.length],
@@ -278,6 +282,7 @@ function applyProfileData(user, repos, events) {
   currentUsername = user.login;
   contributorCache.clear();
   galaxyTitle.textContent = `${user.login}'s code galaxy`;
+  galaxyTitle.classList.add("is-loaded");
   repoCount.textContent = user.public_repos ?? repos.length;
   starCount.textContent = repos.reduce((sum, repo) => sum + (repo.stargazers_count || 0), 0);
   activityCount.textContent = events.length;
@@ -346,6 +351,7 @@ function loadDemo() {
   currentUsername = "demo";
   contributorCache.clear();
   galaxyTitle.textContent = "Demo code galaxy";
+  galaxyTitle.classList.add("is-loaded");
   repoCount.textContent = demoRepos.length;
   starCount.textContent = demoRepos.reduce((sum, repo) => sum + repo.stargazers_count, 0);
   activityCount.textContent = 28;
@@ -589,7 +595,20 @@ profileForm.addEventListener("submit", (event) => {
   loadProfile(usernameInput.value);
 });
 
+function exportGalaxyImage() {
+  canvas.toBlob((blob) => {
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${currentUsername || "github"}-galaxy.png`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }, "image/png");
+}
+
 demoButton.addEventListener("click", loadDemo);
+exportButton.addEventListener("click", exportGalaxyImage);
 
 pauseButton.addEventListener("click", () => {
   paused = !paused;
